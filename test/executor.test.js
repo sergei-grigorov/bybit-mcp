@@ -110,7 +110,7 @@ test('скрытый уровень: подсказка называет при�
   const pub = makeExecutor();
   await assert.rejects(
     pub.executor.call({ tool: 'read', path: '/v5/order/create', params: {} }),
-    /"trade" endpoint — it needs bybit_trade, which is not available with the current settings \(mainnet: no API key; demo: no API key\); the user can change this in Claude Desktop → Settings → Extensions → Bybit V5/,
+    /"trade" endpoint — it needs send_trading_request, which is not available with the current settings \(mainnet: no API key; demo: no API key\); the user can change this in Claude Desktop → Settings → Extensions → Bybit V5/,
   );
   const mainOnly = makeExecutor({ env: { BYBIT_MAINNET_API_KEY: 'k', BYBIT_MAINNET_API_SECRET: 's', BYBIT_MAINNET_ALLOW_TRADING: 'true' } });
   assert.equal(mainOnly.executor.tierBlocker('trade'), null);
@@ -125,15 +125,15 @@ test('инструмент должен соответствовать уров�
   const { executor } = makeExecutor({ env: TEST_KEYS });
   await assert.rejects(
     executor.call({ tool: 'read', path: '/v5/order/create', params: {} }),
-    /"trade" endpoint — call it with bybit_trade/,
+    /"trade" endpoint — call it with send_trading_request/,
   );
   await assert.rejects(
     executor.call({ tool: 'trade', env: 'demo', path: '/v5/asset/withdraw/create', params: {} }),
-    /"funds" endpoint — call it with bybit_funds/,
+    /"funds" endpoint — call it with send_funds_request/,
   );
   await assert.rejects(
     executor.call({ tool: 'funds', env: 'demo', path: '/v5/order/realtime', params: {} }),
-    /"read" endpoint — call it with bybit_read/,
+    /"read" endpoint — call it with send_read_request/,
   );
   await assert.rejects(
     executor.call({ tool: 'trade', env: 'demo', path: '/v5/brand-new/thing', params: {} }),
@@ -145,11 +145,11 @@ test('инструмент должен соответствовать уров�
   );
 });
 
-test('метод вне каталога: GET — через чтение, POST — только через bybit_funds', async () => {
+test('метод вне каталога: GET — через чтение, POST — только через send_funds_request', async () => {
   const { executor, calls } = makeExecutor({ env: TEST_KEYS, handler: () => OK() });
   const r = await executor.call({ tool: 'read', env: 'demo', path: '/v5/brand-new/list', params: { a: 1 } });
   assert.match(r.text, /not in the local catalog/);
-  await assert.rejects(executor.call({ tool: 'read', env: 'demo', path: '/v5/brand-new/do', method: 'POST' }), /call it with bybit_funds/);
+  await assert.rejects(executor.call({ tool: 'read', env: 'demo', path: '/v5/brand-new/do', method: 'POST' }), /call it with send_funds_request/);
   await executor.call({ tool: 'funds', env: 'demo', path: '/v5/brand-new/do', params: { a: 1 } });
   const sent = apiCalls(calls);
   assert.equal(sent[0].headers['x-bapi-api-key'], 'DEMOKEY456', 'неизвестный метод подписывается');
@@ -346,7 +346,7 @@ test('путь в другом регистре — тот же метод и т
   const { executor, calls } = makeExecutor({ env: { ...TEST_KEYS, BYBIT_MAINNET_ALLOW_FUNDS: 'true' } });
   await assert.rejects(
     executor.call({ tool: 'funds', env: 'mainnet', path: '/v5/Order/Create', params: {} }),
-    /POST \/v5\/order\/create is a "trade" endpoint — call it with bybit_trade/,
+    /POST \/v5\/order\/create is a "trade" endpoint — call it with send_trading_request/,
   );
   assert.equal(calls.length, 0);
 });

@@ -110,7 +110,7 @@ test('поиск', () => {
 test('описание метода', () => {
   const text = catalog.describe(catalog.lookup('/v5/order/create'));
   assert.match(text, /^POST \/v5\/order\/create — Place Order/);
-  assert.match(text, /tool: bybit_trade/);
+  assert.match(text, /tool: send_trading_request/);
   assert.match(text, /- qty\* \(string\)/);
   assert.match(text, /timeinforce: GTC \| IOC \| FOK \| PostOnly \| RPI/);
   const multi = catalog.describe(catalog.lookup('/v5/earn/advance/place-order'));

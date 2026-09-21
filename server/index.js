@@ -8,6 +8,7 @@ import { Catalog } from './catalog.js';
 import { accessBlockers, accessSummary, loadConfig, SETTINGS_PATH } from './config.js';
 import { Executor } from './executor.js';
 import { McpServer } from './mcp.js';
+import { TOOL } from './names.js';
 import { buildTools, DOCS_URL, unavailableTools } from './tools.js';
 import { NAME, TITLE, VERSION } from './version.js';
 
@@ -49,12 +50,12 @@ export function buildInstructions(config) {
     );
   }
   lines.push(
-    'Workflow: use the shortcut tools (bybit_get_*' +
-      (access.trade.length ? ', bybit_place_order, …' : '') +
-      ') for common tasks; otherwise bybit_search_endpoints → bybit_describe_endpoint → bybit_read' +
-      (access.trade.length ? ' / bybit_trade' : '') +
-      (access.funds.length ? ' / bybit_funds' : '') +
-      '. bybit_stream listens to WebSocket topics for a few seconds.',
+    'Workflow: use the shortcut tools (get_*' +
+      (access.trade.length ? `, ${TOOL.placeOrder}, …` : '') +
+      `) for common tasks; otherwise ${TOOL.search} → ${TOOL.describe} → ${TOOL.read}` +
+      (access.trade.length ? ` / ${TOOL.trade}` : '') +
+      (access.funds.length ? ` / ${TOOL.funds}` : '') +
+      `. ${TOOL.stream} listens to WebSocket topics for a few seconds.`,
   );
   if (access.trade.length || access.funds.length) {
     lines.push(

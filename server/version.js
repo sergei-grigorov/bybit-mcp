@@ -2,4 +2,4 @@
 // совпадение проверяет тест.
 export const NAME = 'bybit-mcp';
 export const TITLE = 'Bybit V5';
-export const VERSION = '1.0.0';
+export const VERSION = '1.1.0';

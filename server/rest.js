@@ -13,7 +13,7 @@ export const REQUEST_BUDGET_MS = 45_000;
 // Короткие пояснения к общим кодам ошибок (коды — из docs/v5/error).
 export const RET_CODE_HINTS = {
   10000: 'Bybit server timeout.',
-  10001: 'Parameter error: check names, types and required fields (see bybit_describe_endpoint).',
+  10001: 'Parameter error: check names, types and required fields (see describe_endpoint).',
   10002: 'Timestamp is outside recv_window: local clock drift or a slow network.',
   10003: 'API key is invalid for this domain. Demo Trading keys work only with env="demo", mainnet keys only with env="mainnet".',
   10004: 'Signature error: check the API secret (HMAC secret or RSA private key).',

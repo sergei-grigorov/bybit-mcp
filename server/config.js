@@ -5,6 +5,7 @@
 
 import { readFileSync } from 'node:fs';
 
+import { TOOL } from './names.js';
 import { createSigner } from './signer.js';
 import { TITLE } from './version.js';
 
@@ -242,7 +243,7 @@ export function accessSummary(config) {
 
 // Почему у счёта нет рабочего ключа — для текстов модели.
 export function keyProblem(envConfig) {
-  return envConfig.keyError ? 'the API secret could not be read (see bybit_status)' : 'no API key';
+  return envConfig.keyError ? `the API secret could not be read (see ${TOOL.status})` : 'no API key';
 }
 
 // Почему уровень trade или funds недоступен ни на одном счёте — с названием нужного

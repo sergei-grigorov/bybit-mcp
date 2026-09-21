@@ -6,6 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { TIER_TOOL } from './catalog.js';
 import { accessBlockers, accessSummary, ENV_NAMES, keyProblem, maskKey, settingRef, SETTINGS_PATH } from './config.js';
 import { fitJson } from './format.js';
+import { TOOL } from './names.js';
 import { mergeParamSchemas, prepareParams } from './params.js';
 import { BybitError, HTTP_STATUS_HINTS, isV5Path, RET_CODE_HINTS, RestClient } from './rest.js';
 import { NAME, VERSION } from './version.js';
@@ -239,7 +240,7 @@ export class Executor {
     }
     if (!isV5Path(s)) {
       throw new ToolError(
-        `"${pathInput}" is not a Bybit V5 path. Use a path like /v5/market/tickers or an id from bybit_search_endpoints.`,
+        `"${pathInput}" is not a Bybit V5 path. Use a path like /v5/market/tickers or an id from ${TOOL.search}.`,
       );
     }
     if (method && !['GET', 'POST'].includes(method)) throw new ToolError(`unsupported HTTP method ${method}`);
@@ -327,8 +328,8 @@ export class Executor {
 
     if (!known && tool === 'trade') {
       throw new ToolError(
-        `${httpMethod} ${target.path} is not in the endpoint catalog. Find the right path with bybit_search_endpoints; ` +
-          'write endpoints missing from the catalog can only be called through bybit_funds, and on mainnet they need ' +
+        `${httpMethod} ${target.path} is not in the endpoint catalog. Find the right path with ${TOOL.search}; ` +
+          `write endpoints missing from the catalog can only be called through ${TOOL.funds}, and on mainnet they need ` +
           'both the trading and the fund-operations switches.',
       );
     }
@@ -375,7 +376,7 @@ export class Executor {
       if (res.errors.length) {
         throw new ToolError(
           `Invalid parameters for ${httpMethod} ${target.path}:\n- ${res.errors.join('\n- ')}\n` +
-            'See bybit_describe_endpoint for the parameter list. If the catalog is outdated, retry with ' +
+            `See ${TOOL.describe} for the parameter list. If the catalog is outdated, retry with ` +
             (tier === 'read' ? 'skip_validation=true.' : 'allow_unknown_params=true (unknown names) or skip_validation=true.'),
         );
       }
@@ -520,7 +521,7 @@ export class Executor {
     if (cleanTopics.some((t) => DCP_TOPIC.test(t))) {
       throw new ToolError(
         'dcp topics are refused: a dcp subscription arms Disconnect Cancel All for this connection, and closing it after ' +
-          'the snapshot can make Bybit cancel all active orders. Read DCP settings with bybit_read GET /v5/account/query-dcp-info.',
+          `the snapshot can make Bybit cancel all active orders. Read DCP settings with ${TOOL.read} GET /v5/account/query-dcp-info.`,
       );
     }
     let auth = null;

@@ -333,11 +333,11 @@ test('короткие инструменты собирают параметр�
     return { text: '{}', isError: false };
   };
   const call = (name, args) => server.handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } });
-  await call('bybit_get_kline', { symbol: 'BTCUSDT', interval: '60', price_type: 'premium', env: 'demo' });
+  await call('get_candles', { symbol: 'BTCUSDT', interval: '60', price_type: 'premium', env: 'demo' });
   assert.deepEqual(seen[0], { tool: 'read', path: '/v5/market/premium-index-price-kline', params: { symbol: 'BTCUSDT', interval: '60' }, env: 'demo', signal: seen[0].signal });
-  await call('bybit_get_wallet_balance', {});
+  await call('get_wallet_balance', {});
   assert.deepEqual(seen[1].params, { accountType: 'UNIFIED' });
-  await call('bybit_place_order', {
+  await call('place_order', {
     env: 'demo',
     category: 'linear',
     symbol: 'BTCUSDT',
@@ -349,7 +349,7 @@ test('короткие инструменты собирают параметр�
   assert.equal(seen[2].tool, 'trade');
   assert.equal(seen[2].path, '/v5/order/create');
   assert.deepEqual(seen[2].params, { slippageToleranceType: 'Percent', symbol: 'BTCUSDT', category: 'linear', side: 'Sell', orderType: 'Market', qty: 1 });
-  await call('bybit_get_open_interest', { category: 'linear', symbol: 'BTCUSDT', intervalTime: '1h', limit: 24 });
+  await call('get_open_interest', { category: 'linear', symbol: 'BTCUSDT', intervalTime: '1h', limit: 24 });
   assert.deepEqual(seen[3], {
     tool: 'read',
     path: '/v5/market/open-interest',
@@ -357,7 +357,7 @@ test('короткие инструменты собирают параметр�
     env: undefined,
     signal: seen[3].signal,
   });
-  const noEnv = await call('bybit_cancel_order', { category: 'linear', symbol: 'BTCUSDT', orderId: '1' });
+  const noEnv = await call('cancel_order', { category: 'linear', symbol: 'BTCUSDT', orderId: '1' });
   assert.match(noEnv.result.content[0].text, /arguments\.env: required/);
 });
 
@@ -379,14 +379,14 @@ test('настоящий процесс, прежняя эпоха: stdout со�
     { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } } },
     { jsonrpc: '2.0', method: 'notifications/initialized' },
     { jsonrpc: '2.0', id: 2, method: 'tools/list' },
-    { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'bybit_describe_endpoint', arguments: { endpoint: 'POST /v5/order/create' } } },
-    { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'bybit_trade', arguments: { env: 'mainnet', path: '/v5/order/cancel-all', params: { category: 'linear' } } } },
+    { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'describe_endpoint', arguments: { endpoint: 'POST /v5/order/create' } } },
+    { jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'send_trading_request', arguments: { env: 'mainnet', path: '/v5/order/cancel-all', params: { category: 'linear' } } } },
   ], { BYBIT_MAINNET_API_KEY: 'k', BYBIT_MAINNET_API_SECRET: 's', BYBIT_DEMO_API_KEY: 'k2', BYBIT_DEMO_API_SECRET: 's2' });
   assert.equal(code, 0);
   assert.deepEqual(lines.map((l) => l.id).sort(), [1, 2, 3, 4]);
   assert.equal(byId[1].result.serverInfo.name, 'bybit-mcp');
   assert.ok(byId[2].result.tools.length >= 20);
-  assert.match(byId[3].result.content[0].text, /tool: bybit_trade/);
+  assert.match(byId[3].result.content[0].text, /tool: send_trading_request/);
   assert.equal(byId[4].result.isError, true);
   assert.match(byId[4].result.content[0].text, /Trading on mainnet is disabled/);
   assert.match(stderr, /\[bybit-mcp\]/);
@@ -397,7 +397,7 @@ test('настоящий процесс, современная эпоха: пр
   const { code, byId, stderr } = await runProcess([
     { jsonrpc: '2.0', id: 'discover-1', method: 'server/discover', params: { _meta: meta } },
     { jsonrpc: '2.0', id: 2, method: 'tools/list', params: { _meta: meta } },
-    { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'bybit_search_endpoints', arguments: { query: 'funding rate history', public_only: true }, _meta: meta } },
+    { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'search_endpoints', arguments: { query: 'funding rate history', public_only: true }, _meta: meta } },
   ]);
   assert.equal(code, 0);
   const discover = byId['discover-1'].result;
@@ -405,8 +405,8 @@ test('настоящий процесс, современная эпоха: пр
   assert.equal(discover._meta[META.serverInfo].name, 'bybit-mcp');
   assert.match(discover.instructions, /No account is connected/);
   const tools = byId[2].result.tools.map((t) => t.name);
-  assert.ok(tools.includes('bybit_get_tickers'));
-  assert.ok(!tools.includes('bybit_trade'), 'без ключей торговых инструментов нет');
+  assert.ok(tools.includes('get_tickers'));
+  assert.ok(!tools.includes('send_trading_request'), 'без ключей торговых инструментов нет');
   assert.equal(byId[3].result.resultType, 'complete');
   assert.match(byId[3].result.content[0].text, /GET \/v5\/market\/funding\/history/);
   assert.match(stderr, /server\/discover: test-client 1, protocol 2026-07-28/);

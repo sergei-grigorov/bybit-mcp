@@ -3,7 +3,9 @@
 
 import { readFileSync } from 'node:fs';
 
-export const TIER_TOOL = { read: 'bybit_read', trade: 'bybit_trade', funds: 'bybit_funds' };
+import { TIER_TOOL } from './names.js';
+
+export { TIER_TOOL };
 
 const TIER_LABEL = {
   read: 'read (no side effects)',

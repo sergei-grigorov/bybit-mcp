@@ -3,8 +3,8 @@
 // Настройки берутся из тех же переменных окружения, что и у сервера.
 //
 //   node scripts/call.mjs                       # список инструментов
-//   node scripts/call.mjs bybit_get_tickers '{"category":"linear","symbol":"BTCUSDT"}'
-//   BYBIT_DEMO_API_KEY=… BYBIT_DEMO_API_SECRET=… node scripts/call.mjs bybit_status '{"check_keys":true}'
+//   node scripts/call.mjs get_tickers '{"category":"linear","symbol":"BTCUSDT"}'
+//   BYBIT_DEMO_API_KEY=… BYBIT_DEMO_API_SECRET=… node scripts/call.mjs connector_status '{"check_keys":true}'
 
 import { createServer } from '../server/index.js';
 
