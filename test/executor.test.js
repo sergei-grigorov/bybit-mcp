@@ -110,7 +110,7 @@ test('скрытый уровень: подсказка называет при�
   const pub = makeExecutor();
   await assert.rejects(
     pub.executor.call({ tool: 'read', path: '/v5/order/create', params: {} }),
-    /"trade" endpoint — it needs send_trading_request, which is not available with the current settings \(mainnet: no API key; demo: no API key\); the user can change this in Claude Desktop → Settings → Extensions → Bybit V5/,
+    /"trade" endpoint — it needs send_trading_request, which is not available with the current settings \(mainnet: no API key; demo: no API key\); the user can change this in Claude Desktop → Settings → Extensions → Bybit\./,
   );
   const mainOnly = makeExecutor({ env: { BYBIT_MAINNET_API_KEY: 'k', BYBIT_MAINNET_API_SECRET: 's', BYBIT_MAINNET_ALLOW_TRADING: 'true' } });
   assert.equal(mainOnly.executor.tierBlocker('trade'), null);

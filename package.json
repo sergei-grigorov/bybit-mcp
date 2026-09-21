@@ -1,6 +1,6 @@
 {
   "name": "bybit-mcp",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "Коннектор Claude (MCP) для Bybit API V5: открытые методы без ключей, реальный счёт (api.bybit.com) и демо-счёт (api-demo.bybit.com)",
   "repository": {

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Точка входа коннектора Bybit V5 для Claude Desktop (MCP по stdio).
+// Точка входа коннектора Bybit для Claude Desktop (MCP по stdio): Bybit API V5.
 
 import { realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
@@ -27,7 +27,7 @@ export function buildInstructions(config) {
   const access = accessSummary(config);
   const key = (e) => (e.hasKeys ? 'API key configured' : e.keyError ? 'API key set, but the secret could not be read' : 'no API key');
   const lines = [
-    `Bybit V5 connector for the Bybit REST and WebSocket API (${DOCS_URL}).`,
+    `Bybit connector for the Bybit V5 REST and WebSocket API (${DOCS_URL}).`,
     `Accounts: "mainnet" = real account at api.bybit.com (${key(m)}; trading ${onOff(m.allowTrade)}, fund operations ` +
       `${onOff(m.allowFunds)}); "demo" = Demo Trading account at api-demo.bybit.com (${key(d)}; trading and fund ` +
       'operations always allowed).',

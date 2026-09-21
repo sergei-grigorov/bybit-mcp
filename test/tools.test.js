@@ -8,7 +8,7 @@ import { SETTING_TITLES } from '../server/config.js';
 import { buildInstructions, createServer } from '../server/index.js';
 import { RENAMED } from '../server/names.js';
 import { ALL_TOOL_NAMES } from '../server/tools.js';
-import { NAME, VERSION } from '../server/version.js';
+import { NAME, TITLE, VERSION } from '../server/version.js';
 import { TEST_KEYS } from './helpers.js';
 
 const manifest = JSON.parse(readFileSync(new URL('../manifest.json', import.meta.url), 'utf8'));
@@ -48,7 +48,7 @@ test('без ключей — только открытые методы', () =>
   assert.ok(!byName.watch_stream.inputSchema.properties.channel.enum.includes('private'));
   assert.match(byName.send_read_request.description, /No API key is configured, so only public endpoints work/);
   assert.match(server.instructions, /No account is connected, so only public data is available/);
-  assert.match(server.instructions, /Settings → Extensions → Bybit V5/);
+  assert.match(server.instructions, /Settings → Extensions → Bybit\./);
   assert.doesNotMatch(server.instructions, /explicit user|confirmation/i);
 });
 
@@ -164,6 +164,7 @@ test('инструменты коннектора: схемы и аннотац�
 
 test('manifest.json согласован с кодом', () => {
   assert.equal(manifest.name, NAME);
+  assert.equal(manifest.display_name, TITLE);
   assert.equal(pkg.name, NAME);
   assert.equal(manifest.version, VERSION);
   assert.equal(pkg.version, VERSION);
