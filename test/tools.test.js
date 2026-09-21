@@ -20,6 +20,9 @@ const PUBLIC_TOOLS = [
   'send_read_request',
   'watch_stream',
   'connector_status',
+  'create_alert',
+  'list_alerts',
+  'cancel_alert',
   'get_tickers',
   'get_candles',
   'get_order_book',
@@ -211,7 +214,9 @@ test('старые имена инструментов ведут к новым'
     assert.ok(ALL_TOOL_NAMES.includes(name), `${oldName} → ${name}`);
     assert.ok(!ALL_TOOL_NAMES.includes(oldName), oldName);
   }
-  assert.equal(Object.keys(RENAMED).length, ALL_TOOL_NAMES.length);
+  // Старое имя есть у каждого инструмента, кроме появившихся позже переименования.
+  const newer = ['create_alert', 'list_alerts', 'cancel_alert'];
+  assert.deepEqual(sorted(Object.values(RENAMED)), sorted(ALL_TOOL_NAMES.filter((n) => !newer.includes(n))));
   const { server } = createServer({ env: {} });
   const call = async (name) =>
     (await server.handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: {} } })).result;

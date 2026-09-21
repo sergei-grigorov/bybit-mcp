@@ -4,6 +4,7 @@
 import { realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
+import { AlertManager } from './alerts.js';
 import { Catalog } from './catalog.js';
 import { accessBlockers, accessSummary, loadConfig, SETTINGS_PATH } from './config.js';
 import { Executor } from './executor.js';
@@ -56,6 +57,9 @@ export function buildInstructions(config) {
       (access.trade.length ? ` / ${TOOL.trade}` : '') +
       (access.funds.length ? ` / ${TOOL.funds}` : '') +
       `. ${TOOL.stream} listens to WebSocket topics for a few seconds.`,
+    `To wait for a price level, a percent move, a candle close${access.accounts.length ? ', an order status or a position change' : ''} ` +
+      `without polling, call ${TOOL.createAlert} and start the Monitor tool (Claude Code) with the returned "monitor" object: ` +
+      `it wakes you only when the condition is met. ${TOOL.listAlerts} and ${TOOL.cancelAlert} manage alerts.`,
   );
   if (access.trade.length || access.funds.length) {
     lines.push(
@@ -74,11 +78,12 @@ export function buildInstructions(config) {
   return lines.join('\n');
 }
 
-export function createServer({ env = process.env, fetchImpl, WebSocketImpl } = {}) {
+export function createServer({ env = process.env, fetchImpl, WebSocketImpl, alertOptions = {} } = {}) {
   const config = loadConfig(env);
   const catalog = Catalog.load();
   const executor = new Executor({ config, catalog, logger, fetchImpl, WebSocketImpl });
-  const tools = buildTools({ config, catalog, executor });
+  const alerts = new AlertManager({ config, executor, logger, WebSocketImpl, ...alertOptions });
+  const tools = buildTools({ config, catalog, executor, alerts });
   const server = new McpServer({
     info: { name: NAME, title: TITLE, version: VERSION },
     instructions: buildInstructions(config),
@@ -86,7 +91,7 @@ export function createServer({ env = process.env, fetchImpl, WebSocketImpl } = {
     logger,
     unavailable: unavailableTools(config),
   });
-  return { server, config, catalog, executor, tools };
+  return { server, config, catalog, executor, alerts, tools };
 }
 
 function isMain() {
@@ -99,7 +104,7 @@ function isMain() {
 }
 
 if (isMain()) {
-  const { server, config, catalog, tools } = createServer();
+  const { server, config, catalog, alerts, tools } = createServer();
   const m = config.envs.mainnet;
   const d = config.envs.demo;
   logger.info(
@@ -112,7 +117,12 @@ if (isMain()) {
     if (err.code === 'EPIPE') process.exit(0);
     throw err;
   });
-  // Вход закрыт — Claude Desktop завершает сервер. Даём stdout дописаться и выходим;
-  // если что-то ещё держит процесс, выходим принудительно через 2 с.
-  server.start({ onClose: () => setTimeout(() => process.exit(0), 2000).unref() });
+  // Вход закрыт — Claude Desktop завершает сервер. Monitor получает код закрытия с причиной,
+  // stdout дописывается, и процесс выходит; если что-то ещё держит его, — принудительно через 2 с.
+  server.start({
+    onClose: () => {
+      alerts.close().catch((err) => logger.error(`оповещения: ${err?.message ?? err}`));
+      setTimeout(() => process.exit(0), 2000).unref();
+    },
+  });
 }

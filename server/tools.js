@@ -11,7 +11,20 @@
 // данные, инструменты счёта появляются с ключом, а торговые и денежные — только если
 // их можно выполнить хотя бы на одном счёте. Что скрыто и почему, объясняют
 // инструкции сервера (index.js).
+//
+// Оповещения (create_alert, list_alerts, cancel_alert) есть всегда: условия на рынке
+// работают без ключей, а условия на ордера и позиции появляются в схеме вместе с ключом.
 
+import {
+  ALERT_LIMITS,
+  CANDLE_INTERVALS,
+  CONDITION_TYPES,
+  DEFAULT_ORDER_STATUSES,
+  FREQUENCIES,
+  ORDER_STATUSES,
+  POSITION_EVENTS,
+  TICKER_OPS,
+} from './alerts.js';
 import { summarizeEntry } from './catalog.js';
 import { accessBlockers, accessSummary, ENV_NAMES, keyProblem, SETTINGS_PATH } from './config.js';
 import { fetchDoc } from './docs.js';
@@ -87,6 +100,149 @@ function shortcut({ name, title, description, path, tier, scope, properties, req
       return executor.call({ tool: tier, path: target, params, env, signal: ctx.signal });
     },
   };
+}
+
+// Оповещения: условия проверяет коннектор, агент ждёт события через Monitor.
+function alertTools({ config, alerts, access }) {
+  const withAccount = access.accounts.length > 0;
+  const types = withAccount ? CONDITION_TYPES : CONDITION_TYPES.filter((t) => t !== 'order' && t !== 'position');
+  const condition = {
+    type: {
+      type: 'string',
+      enum: types,
+      description:
+        'ticker: a live ticker field; candle: a closed candle' + (withAccount ? '; order: an order status; position: a position change.' : '.'),
+    },
+    category: CATEGORY,
+    symbol: SYMBOL,
+    field: {
+      type: 'string',
+      description:
+        'ticker: numeric ticker field, default lastPrice (option: markPrice). linear/inverse also markPrice, indexPrice, ' +
+        'bid1Price, ask1Price, fundingRate, openInterest, openInterestValue, price24hPcnt, volume24h, turnover24h; spot: ' +
+        'lastPrice, price24hPcnt, volume24h, turnover24h, usdIndexPrice; option: bidPrice, askPrice, markPriceIv, ' +
+        'underlyingPrice, delta, gamma, vega, theta. candle: close (default), open, high, low, volume, turnover, change_pct ' +
+        '(close vs open, %), range_pct (high vs low, %).',
+    },
+    op: {
+      type: 'string',
+      enum: TICKER_OPS,
+      description:
+        'above / below: the value is >= / <= value. ticker only: rise_pct / fall_pct / move_pct — up, down or either way by ' +
+        'value percent from the current value (turned into fixed levels at creation).',
+    },
+    value: { ...STR_NUM, description: 'Level, or percent for *_pct.' },
+    interval: { type: 'string', enum: CANDLE_INTERVALS, description: 'candle: minutes, D, W or M.' },
+  };
+  if (withAccount) {
+    Object.assign(condition, {
+      env: envProp(config, 'account'),
+      order_id: { type: 'string', description: 'order: watch this order (needs category).' },
+      order_link_id: { type: 'string', description: 'order: watch the order with this orderLinkId (needs category).' },
+      statuses: {
+        type: 'array',
+        items: { type: 'string', enum: ORDER_STATUSES },
+        minItems: 1,
+        description: `order: statuses that fire, default ${DEFAULT_ORDER_STATUSES.join(', ')}.`,
+      },
+      event: {
+        type: 'string',
+        enum: POSITION_EVENTS,
+        description:
+          'position: what fires, default size_changed. A reversal in one fill (Buy -> Sell) counts as closed and opened; ' +
+          'liquidation fires when Bybit marks the position Liq/Adl, and a liquidated position also fires closed.',
+      },
+    });
+  }
+  const examples =
+    '[{"type":"ticker","category":"linear","symbol":"BTCUSDT","op":"above","value":70000}], ' +
+    '[{"type":"candle","category":"spot","symbol":"ETHUSDT","interval":"15","op":"below","value":3000}]' +
+    (withAccount ? ', [{"type":"order","category":"linear","order_link_id":"mcp-abc"}]' : '');
+  return [
+    {
+      name: TOOL.createAlert,
+      title: 'Create alert',
+      description:
+        'Wait for a Bybit market or account event without polling: the connector watches Bybit streams itself and sends an ' +
+        'event only when a condition is met. Returns a local WebSocket for the Monitor tool of Claude Code: call Monitor ' +
+        'with the returned "monitor" object ({ws:{url}, description, timeout_ms}); each event arrives as one JSON message and ' +
+        'wakes you. Conditions: ticker — a ticker field (lastPrice by default) is above/below a level or moves by a percent ' +
+        'from its current value; candle — a closed candle (spot, linear, inverse) has close, open, high, low, volume, ' +
+        'turnover, change_pct or range_pct above/below a value' +
+        (withAccount
+          ? '; order — an order (by order_id or order_link_id with category, or any order, optionally of a category/symbol) ' +
+            `reaches one of statuses (default ${DEFAULT_ORDER_STATUSES.join(', ')}); position — the position of a symbol ` +
+            'is opened, closed, changes size or gets liquidated'
+          : '') +
+        '. A ticker condition that already holds fires at once. frequency: once (default) — the alert ends with its first ' +
+        'event; once_per_condition — each condition fires once; every_time — a ticker condition fires again after it was ' +
+        'false, at most once per cooldown_seconds, and candle, order and position conditions fire on every matching event. ' +
+        'The connector also reports Bybit stream outages. Monitor stops after 30 minutes at most: start it again with the ' +
+        'same URL, events of the gap arrive then. Close codes 4000-4005 mean that Monitor is no longer needed (the alert is ' +
+        'over, or 4001: a newer Monitor took over); the reason says why. Alerts live in the connector process (default ' +
+        `${ALERT_LIMITS.defaultExpiresMinutes / 60} h, up to 7 days) and are lost if it restarts: Monitor then fails to ` +
+        `connect (1006) — check ${TOOL.listAlerts} and create the alert again. Without a Monitor-like tool (e.g. in Claude ` +
+        `Desktop chat) nothing wakes you; ${TOOL.listAlerts} still shows fired events. Write what you will need when woken ` +
+        'into note: it is repeated in every message.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          conditions: {
+            type: 'array',
+            minItems: 1,
+            maxItems: ALERT_LIMITS.maxConditions,
+            items: { type: 'object', properties: condition, required: ['type'], additionalProperties: false },
+            description: `The alert fires when any condition is met. Examples: ${examples}.`,
+          },
+          frequency: { type: 'string', enum: FREQUENCIES, description: 'Default once.' },
+          cooldown_seconds: {
+            type: 'integer',
+            minimum: ALERT_LIMITS.minCooldownSeconds,
+            maximum: 86_400,
+            description: `every_time: minimum pause between events of a ticker condition (default ${ALERT_LIMITS.defaultCooldownSeconds}).`,
+          },
+          expires_in_minutes: {
+            type: 'integer',
+            minimum: 1,
+            maximum: ALERT_LIMITS.maxExpiresMinutes,
+            description: `Default ${ALERT_LIMITS.defaultExpiresMinutes} (24 h).`,
+          },
+          note: {
+            type: 'string',
+            description: `Up to ${ALERT_LIMITS.maxNoteChars} characters of context for yourself (why, what to do next); repeated in every event.`,
+          },
+        },
+        required: ['conditions'],
+        additionalProperties: false,
+      },
+      annotations: { title: 'Create alert', readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      handler: async (args, ctx) => JSON.stringify(await alerts.create(args, { signal: ctx.signal }), null, 1),
+    },
+    {
+      name: TOOL.listAlerts,
+      title: 'List alerts',
+      description:
+        `Alerts created with ${TOOL.createAlert}: conditions with current values, fired and pending events, whether a Monitor ` +
+        'is connected, the monitor object to reconnect with, recently ended alerts and the state of the Bybit streams.',
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      annotations: { title: 'List alerts', ...LOCAL_ANN },
+      handler: () => JSON.stringify(alerts.list(), null, 1),
+    },
+    {
+      name: TOOL.cancelAlert,
+      title: 'Cancel alert',
+      description:
+        'Cancel an alert, or every alert with all=true: its conditions stop being checked and a connected Monitor gets close ' +
+        'code 4002.',
+      inputSchema: {
+        type: 'object',
+        properties: { alert_id: STR, all: { type: 'boolean', description: 'Cancel every alert.' } },
+        additionalProperties: false,
+      },
+      annotations: { title: 'Cancel alert', ...LOCAL_ANN },
+      handler: (args) => JSON.stringify(alerts.cancel(args), null, 1),
+    },
+  ];
 }
 
 const KLINE_PATHS = {
@@ -439,7 +595,7 @@ const TRADE_SHORTCUTS = [
   },
 ].map((s) => ({ ...s, tier: 'trade' }));
 
-export function buildTools({ config, catalog, executor }) {
+export function buildTools({ config, catalog, executor, alerts }) {
   const access = accessSummary(config);
   const groups = catalog
     .groups()
@@ -682,7 +838,8 @@ export function buildTools({ config, catalog, executor }) {
         '. Topic examples: "orderbook.50.BTCUSDT", "tickers.ETHUSDT", "publicTrade.BTCUSDT", "kline.5.BTCUSDT", ' +
         '"allLiquidation.BTCUSDT". mode="summary" (default) rebuilds order books from snapshot+deltas (top `depth` ' +
         'levels), merges ticker updates and lists other events; mode="raw" returns messages as received. Demo Trading ' +
-        'has private streams only; its public data equals mainnet.',
+        `has private streams only; its public data equals mainnet. To wait for a condition, use ${TOOL.createAlert} ` +
+        'instead of repeated calls.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -731,6 +888,7 @@ export function buildTools({ config, catalog, executor }) {
       annotations: { title: 'Connector status', ...READ_ANN },
       handler: (args, ctx) => executor.status({ checkKeys: args.check_keys, signal: ctx.signal }),
     },
+    ...alertTools({ config, alerts, access }),
   );
 
   const shortcuts = [
@@ -784,6 +942,9 @@ export const ALL_TOOL_NAMES = [
   TOOL.funds,
   TOOL.stream,
   TOOL.status,
+  TOOL.createAlert,
+  TOOL.listAlerts,
+  TOOL.cancelAlert,
   ...MARKET_SHORTCUTS.map((s) => s.name),
   ...ACCOUNT_SHORTCUTS.map((s) => s.name),
   ...TRADE_SHORTCUTS.map((s) => s.name),

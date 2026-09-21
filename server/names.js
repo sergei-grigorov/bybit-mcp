@@ -9,6 +9,9 @@ export const TOOL = {
   funds: 'send_funds_request',
   stream: 'watch_stream',
   status: 'connector_status',
+  createAlert: 'create_alert',
+  listAlerts: 'list_alerts',
+  cancelAlert: 'cancel_alert',
   tickers: 'get_tickers',
   candles: 'get_candles',
   orderBook: 'get_order_book',
@@ -30,7 +33,8 @@ export const TOOL = {
 };
 
 // Имена до версии 1.1.0. Вызов по старому имени (например, из устаревшего списка
-// у клиента) получает подсказку с новым именем.
+// у клиента) получает подсказку с новым именем. Инструменты оповещений (1.2.0) старых
+// имён не имеют.
 export const RENAMED = {
   bybit_search_endpoints: TOOL.search,
   bybit_describe_endpoint: TOOL.describe,
