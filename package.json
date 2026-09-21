@@ -1,0 +1,26 @@
+{
+  "name": "bybit-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Коннектор Claude (MCP) для Bybit API V5: открытые методы без ключей, реальный счёт (api.bybit.com) и демо-счёт (api-demo.bybit.com)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sergei-grigorov/bybit-mcp.git"
+  },
+  "type": "module",
+  "main": "server/index.js",
+  "bin": {
+    "bybit-mcp": "server/index.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node --test \"test/*.test.js\"",
+    "call": "node scripts/call.mjs",
+    "catalog": "node scripts/build-catalog.mjs",
+    "validate": "npx -y @anthropic-ai/mcpb@2.1.2 validate manifest.json",
+    "pack": "npx -y @anthropic-ai/mcpb@2.1.2 pack . dist/bybit-mcp.mcpb"
+  }
+}

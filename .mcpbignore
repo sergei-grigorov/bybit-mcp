@@ -1,0 +1,10 @@
+test/
+scripts/
+dist/
+.git/
+.github/
+.gitignore
+.mcpbignore
+README.md
+*.log
+.DS_Store

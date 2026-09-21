@@ -1,0 +1,150 @@
+{
+  "manifest_version": "0.3",
+  "name": "bybit-mcp",
+  "display_name": "Bybit V5",
+  "version": "1.0.0",
+  "description": "Bybit API V5: открытые рыночные данные без ключей, реальный счёт (api.bybit.com) и демо-счёт (api-demo.bybit.com).",
+  "long_description": "Коннектор к REST и WebSocket API Bybit V5.\n\n- **Без ключей — открытые методы.** Цены, свечи, стакан, сделки, ставки финансирования, открытый интерес, параметры инструментов, объявления и статус системы.\n- **Реальный и демо-счёт.** Каждый подключается своим ключом; можно подключить оба сразу и в каждом запросе выбирать счёт.\n- **Безопасность по умолчанию.** На реальном счёте включено только чтение. Торговля и операции со средствами включаются отдельными переключателями. На демо-счёте разрешено всё.\n- **Полный каталог методов.** Все REST-методы V5 из официальной документации: поиск, описание параметров, вызов любого метода.\n- **Три уровня доступа — три инструмента:** чтение, торговля, средства и администрирование. Чтение можно разрешить навсегда, а остальное подтверждать каждый раз.\n- **WebSocket.** Короткие снимки потоков: стакан, тикеры, сделки, приватные события.\n\nНастройки можно изменить в любой момент: Settings → Extensions → Bybit V5. Ключи хранятся в защищённом хранилище системы и никуда, кроме Bybit, не передаются.",
+  "author": {
+    "name": "sergei-grigorov",
+    "url": "https://github.com/sergei-grigorov"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sergei-grigorov/bybit-mcp"
+  },
+  "homepage": "https://github.com/sergei-grigorov/bybit-mcp",
+  "documentation": "https://github.com/sergei-grigorov/bybit-mcp#readme",
+  "support": "https://github.com/sergei-grigorov/bybit-mcp/issues",
+  "icon": "icon.png",
+  "keywords": ["bybit", "crypto", "exchange", "trading", "market data", "demo trading", "api v5"],
+  "privacy_policies": ["https://www.bybit.com/en/legal/policies-and-rules/privacy-policy"],
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.js"],
+      "env": {
+        "BYBIT_MAINNET_API_KEY": "${user_config.mainnet_api_key}",
+        "BYBIT_MAINNET_API_SECRET": "${user_config.mainnet_api_secret}",
+        "BYBIT_MAINNET_ALLOW_TRADING": "${user_config.mainnet_allow_trading}",
+        "BYBIT_MAINNET_ALLOW_FUNDS": "${user_config.mainnet_allow_funds}",
+        "BYBIT_DEMO_API_KEY": "${user_config.demo_api_key}",
+        "BYBIT_DEMO_API_SECRET": "${user_config.demo_api_secret}",
+        "BYBIT_DEFAULT_ENV": "${user_config.default_env}",
+        "BYBIT_MAINNET_BASE_URL": "${user_config.mainnet_base_url}",
+        "BYBIT_RECV_WINDOW": "${user_config.recv_window}",
+        "BYBIT_REFERER": "${user_config.referer}"
+      }
+    }
+  },
+  "tools": [
+    { "name": "bybit_search_endpoints", "description": "Поиск по каталогу всех REST-методов Bybit V5" },
+    { "name": "bybit_describe_endpoint", "description": "Параметры, права ключа и лимиты метода; по запросу — официальная страница документации" },
+    { "name": "bybit_read", "description": "Любой метод чтения: рынок, балансы, позиции, ордера, история" },
+    { "name": "bybit_trade", "description": "Торговые методы: ордера, позиции, плечо, TP/SL, торговые настройки (если торговля разрешена)" },
+    { "name": "bybit_funds", "description": "Переводы, вывод, конвертация, займы, Earn, субаккаунты и API-ключи (если операции разрешены)" },
+    { "name": "bybit_stream", "description": "Снимок WebSocket-потоков: стакан, тикеры, сделки, приватные события" },
+    { "name": "bybit_status", "description": "Настройки коннектора и проверка ключей" },
+    { "name": "bybit_get_tickers", "description": "Тикеры" },
+    { "name": "bybit_get_kline", "description": "Свечи: по сделкам, mark, index, premium" },
+    { "name": "bybit_get_orderbook", "description": "Стакан" },
+    { "name": "bybit_get_recent_trades", "description": "Последние сделки" },
+    { "name": "bybit_get_funding_history", "description": "История ставок финансирования" },
+    { "name": "bybit_get_open_interest", "description": "Открытый интерес" },
+    { "name": "bybit_get_instruments", "description": "Параметры инструментов" },
+    { "name": "bybit_get_wallet_balance", "description": "Баланс счёта (нужен ключ)" },
+    { "name": "bybit_get_positions", "description": "Открытые позиции (нужен ключ)" },
+    { "name": "bybit_get_open_orders", "description": "Активные ордера (нужен ключ)" },
+    { "name": "bybit_get_order_history", "description": "История ордеров (нужен ключ)" },
+    { "name": "bybit_get_executions", "description": "История сделок (нужен ключ)" },
+    { "name": "bybit_place_order", "description": "Выставить ордер (если торговля разрешена)" },
+    { "name": "bybit_amend_order", "description": "Изменить ордер (если торговля разрешена)" },
+    { "name": "bybit_cancel_order", "description": "Отменить ордер (если торговля разрешена)" },
+    { "name": "bybit_cancel_all_orders", "description": "Отменить все ордера (если торговля разрешена)" },
+    { "name": "bybit_set_leverage", "description": "Установить плечо (если торговля разрешена)" },
+    { "name": "bybit_set_trading_stop", "description": "TP/SL и трейлинг-стоп позиции (если торговля разрешена)" }
+  ],
+  "tools_generated": false,
+  "prompts_generated": false,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=22.0.0"
+    }
+  },
+  "user_config": {
+    "mainnet_api_key": {
+      "type": "string",
+      "title": "Реальный счёт: API Key",
+      "description": "Ключ API основного счёта Bybit: bybit.com → профиль → API. Оставьте пустым, если реальный счёт подключать не нужно: открытые методы API работают и без ключей.",
+      "sensitive": true,
+      "required": false
+    },
+    "mainnet_api_secret": {
+      "type": "string",
+      "title": "Реальный счёт: API Secret",
+      "description": "Секрет этого ключа (HMAC) или закрытый RSA-ключ, если ключ создан как собственный. PEM можно вставить одной строкой.",
+      "sensitive": true,
+      "required": false
+    },
+    "mainnet_allow_trading": {
+      "type": "boolean",
+      "title": "Реальный счёт: разрешить торговлю",
+      "description": "Ордера, позиции, плечо, TP/SL, режим маржи и другие торговые настройки. Операции со средствами включаются отдельным переключателем ниже.",
+      "default": false,
+      "required": false
+    },
+    "mainnet_allow_funds": {
+      "type": "boolean",
+      "title": "Реальный счёт: разрешить операции со средствами",
+      "description": "Переводы, вывод, конвертация, займы, Earn, создание субаккаунтов и управление API-ключами. Действует независимо от переключателя торговли; для создания торговых ботов нужны оба.",
+      "default": false,
+      "required": false
+    },
+    "demo_api_key": {
+      "type": "string",
+      "title": "Демо-счёт: API Key",
+      "description": "Ключ демо-счёта: на bybit.com переключитесь в Demo Trading и создайте ключ в разделе API. Ключи реального счёта здесь не подойдут. На демо-счёте разрешены все операции.",
+      "sensitive": true,
+      "required": false
+    },
+    "demo_api_secret": {
+      "type": "string",
+      "title": "Демо-счёт: API Secret",
+      "description": "Секрет ключа демо-счёта (HMAC) или закрытый RSA-ключ.",
+      "sensitive": true,
+      "required": false
+    },
+    "default_env": {
+      "type": "string",
+      "title": "Счёт по умолчанию",
+      "description": "Куда идут запросы чтения, если счёт не назван: auto, mainnet (реальный) или demo. auto — демо-счёт, если задан его ключ, иначе реальный. Для торговли и операций со средствами счёт всегда указывается явно.",
+      "default": "auto",
+      "required": false
+    },
+    "mainnet_base_url": {
+      "type": "string",
+      "title": "Реальный счёт: адрес API",
+      "description": "Меняйте только для регионального аккаунта. Принимаются только адреса API Bybit: https://api.bybit.eu, https://api.bybit.nl, https://api.bybit.kz, https://api.bybit.tr, https://api.bybit.id, https://api.bybitgeorgia.ge, https://api.bybit.ae, https://api.bytick.com, https://api.manepa.jp, https://api.spark-fintech.com. Адрес WebSocket подставится сам.",
+      "default": "https://api.bybit.com",
+      "required": false
+    },
+    "recv_window": {
+      "type": "number",
+      "title": "recv_window, мс",
+      "description": "Сколько миллисекунд подписанный запрос остаётся действительным. Часы сверяются с сервером Bybit автоматически.",
+      "default": 5000,
+      "min": 1000,
+      "max": 60000,
+      "required": false
+    },
+    "referer": {
+      "type": "string",
+      "title": "Брокерский Referer",
+      "description": "Только для брокеров Bybit: значение заголовка X-Referer. Остальным оставить пустым.",
+      "required": false
+    }
+  }
+}
