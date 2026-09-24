@@ -42,8 +42,13 @@ const ALLOWED_HOSTS = {
 
 // Где пользователь меняет настройки и как называются поля — так, как он их видит
 // в Claude Desktop (manifest.json → user_config). При ручном подключении те же
-// настройки задаются переменными окружения, поэтому подсказки называют и их.
-export const SETTINGS_PATH = `Claude Desktop → Settings → Extensions → ${TITLE}`;
+// настройки задаются переменными окружения, поэтому подсказки называют и их. У
+// коннектора на сервере настройки — на его странице (setSettingsPath в serve.js).
+export let SETTINGS_PATH = `Claude Desktop → Settings → Extensions → ${TITLE}`;
+
+export function setSettingsPath(place) {
+  SETTINGS_PATH = place;
+}
 export const SETTING_TITLES = {
   mainnetKey: 'Реальный счёт: API Key',
   mainnetSecret: 'Реальный счёт: API Secret',

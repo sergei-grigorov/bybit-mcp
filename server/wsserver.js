@@ -2,7 +2,8 @@
 // Monitor в Claude Code, а коннектор шлёт по соединению текстовые кадры с событиями.
 // Реализовано только нужное: рукопожатие, кадры без расширений и подпротоколов, ping/pong,
 // закрывающее рукопожатие. Сервер слушает только 127.0.0.1; соединения из браузера
-// (с заголовком Origin) и с чужим Host отклоняются.
+// (с заголовком Origin) и с чужим Host отклоняются. Коннектор на сервере принимает те же
+// соединения общим HTTP-сервером (createMountedServer): адрес для Monitor — публичный.
 
 import { createHash } from 'node:crypto';
 import { createServer, STATUS_CODES } from 'node:http';
@@ -310,7 +311,8 @@ export class LocalSocket {
 // Что не так с запросом на апгрейд (или null). Отказ — ответом HTTP: так отсекаются
 // браузер и подмена Host, а свои отказы (неизвестный адрес и т. п.) сервер даёт уже
 // после рукопожатия кодом закрытия — его причину Monitor показывает, а тело HTTP нет.
-export function checkHandshake(req, port) {
+// hosts — допустимые значения Host; по умолчанию — адреса локального сервера на port.
+export function checkHandshake(req, port, hosts = [`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`]) {
   const h = req.headers;
   if (req.method !== 'GET') return { status: 405, text: 'Only GET is supported' };
   if (String(h.upgrade ?? '').toLowerCase() !== 'websocket') return { status: 400, text: 'Expected Upgrade: websocket' };
@@ -327,7 +329,6 @@ export function checkHandshake(req, port) {
   // Браузер всегда присылает Origin, Monitor — нет: страница из браузера сюда не подключится.
   if (h.origin !== undefined) return { status: 403, text: 'Browser connections are not allowed' };
   // Защита от DNS rebinding: Host — только адрес самого сервера.
-  const hosts = [`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`];
   if (!hosts.includes(String(h.host ?? '').toLowerCase())) return { status: 403, text: 'Unexpected Host header' };
   return null;
 }
@@ -342,6 +343,24 @@ function rejectUpgrade(socket, { status, text, headers = {} }) {
     ...Object.entries(headers).map(([k, v]) => `${k}: ${v}`),
   ];
   socket.end(`${lines.join('\r\n')}\r\n\r\n${body}`);
+}
+
+// Рукопожатие пройдено: ответ 101 и соединение, которое отдаётся onConnection(path, ws).
+function accept(req, socket, head, { path, onConnection, connections, logger, socketOptions }) {
+  socket.write(
+    ['HTTP/1.1 101 Switching Protocols', 'Upgrade: websocket', 'Connection: Upgrade', `Sec-WebSocket-Accept: ${acceptKey(req.headers['sec-websocket-key'])}`, '', ''].join('\r\n'),
+  );
+  const ws = new LocalSocket(socket, { logger, ...socketOptions });
+  connections.add(ws);
+  socket.on('close', () => connections.delete(ws));
+  try {
+    onConnection(path, ws);
+  } catch (err) {
+    logger?.error(`оповещения: ошибка при подключении Monitor: ${err?.stack ?? err}`);
+    ws.close(1011, 'internal error');
+  }
+  if (head?.length) ws.receive(head);
+  return ws;
 }
 
 // Сервер на 127.0.0.1, порт выбирает система. onConnection(path, ws) решает судьбу
@@ -361,19 +380,8 @@ export async function startLocalServer({ onConnection, logger, host = '127.0.0.1
       rejectUpgrade(socket, problem);
       return;
     }
-    socket.write(
-      ['HTTP/1.1 101 Switching Protocols', 'Upgrade: websocket', 'Connection: Upgrade', `Sec-WebSocket-Accept: ${acceptKey(req.headers['sec-websocket-key'])}`, '', ''].join('\r\n'),
-    );
-    const ws = new LocalSocket(socket, { logger, ...socketOptions });
-    connections.add(ws);
-    socket.on('close', () => connections.delete(ws));
-    try {
-      onConnection(new URL(req.url, 'http://localhost').pathname, ws);
-    } catch (err) {
-      logger?.error(`оповещения: ошибка при подключении Monitor: ${err?.stack ?? err}`);
-      ws.close(1011, 'internal error');
-    }
-    if (head?.length) ws.receive(head);
+    const path = new URL(req.url, 'http://localhost').pathname;
+    accept(req, socket, head, { path, onConnection, connections, logger, socketOptions });
   });
   server.on('clientError', (err, socket) => socket.destroy());
   await new Promise((resolve, reject) => {
@@ -392,6 +400,34 @@ export async function startLocalServer({ onConnection, logger, host = '127.0.0.1
     close() {
       for (const ws of connections) ws.terminate();
       return new Promise((resolve) => server.close(() => resolve()));
+    },
+  };
+}
+
+// Коннектор на сервере: соединения Monitor принимает общий HTTP-сервер коннектора
+// (remote/host.js) и передаёт сюда через accept(req, socket, head, path). Адрес для
+// Monitor — публичный: wss://хост/путь-коннектора/alerts/<токен>. Host должен совпадать
+// с публичным адресом, браузерам (заголовок Origin) вход закрыт, как и у локального сервера.
+export function createMountedServer({ publicUrl, onConnection, logger, socketOptions = {} }) {
+  const base = new URL(publicUrl);
+  const prefix = `${base.protocol === 'https:' ? 'wss:' : 'ws:'}//${base.host}${base.pathname.replace(/\/+$/, '')}`;
+  const connections = new Set();
+  return {
+    port: null,
+    url: (path) => `${prefix}${path}`,
+    connections,
+    accept(req, socket, head, path) {
+      socket.on('error', () => {});
+      const problem = checkHandshake(req, null, [base.host.toLowerCase()]);
+      if (problem) {
+        rejectUpgrade(socket, problem);
+        return null;
+      }
+      return accept(req, socket, head, { path, onConnection, connections, logger, socketOptions });
+    },
+    close() {
+      for (const ws of connections) ws.terminate();
+      return Promise.resolve();
     },
   };
 }

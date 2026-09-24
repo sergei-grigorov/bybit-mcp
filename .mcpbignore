@@ -8,3 +8,5 @@ dist/
 README.md
 *.log
 .DS_Store
+Dockerfile
+.dockerignore

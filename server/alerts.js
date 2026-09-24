@@ -19,7 +19,7 @@ import { TOOL } from './names.js';
 import { BybitError } from './rest.js';
 import { wsAuthPayload } from './signer.js';
 import { streamUrl } from './ws.js';
-import { startLocalServer } from './wsserver.js';
+import { createMountedServer, startLocalServer } from './wsserver.js';
 
 export const CONDITION_TYPES = ['ticker', 'candle', 'order', 'position'];
 export const TICKER_OPS = ['above', 'below', 'rise_pct', 'fall_pct', 'move_pct'];
@@ -246,7 +246,9 @@ export function buildFrame(alert, queue, limit = FRAME_MAX_CHARS) {
 }
 
 export class AlertManager {
-  constructor({ config, executor, logger, WebSocketImpl, timing = {}, feedTiming = {}, socketOptions = {}, now = Date.now }) {
+  // publicUrl — коннектор на сервере: соединения Monitor принимает его HTTP-сервер
+  // (acceptUpgrade), а адреса оповещений — публичные.
+  constructor({ config, executor, logger, WebSocketImpl, timing = {}, feedTiming = {}, socketOptions = {}, now = Date.now, publicUrl = null }) {
     this.config = config;
     this.executor = executor;
     this.logger = logger;
@@ -261,9 +263,17 @@ export class AlertManager {
     this.endedLog = [];
     this.feeds = new Map(); // ключ потока → { feed, label, noticeTimer, noticeSent, downAt }
     this.topics = new Map(); // «ключ потока тема» → { feedKey, topic, conditions, ticker, candle }
-    this.server = null;
+    this.server = publicUrl
+      ? createMountedServer({ publicUrl, onConnection: (path, ws) => this.onConnection(path, ws), logger, socketOptions })
+      : null;
     this.serverStarting = null;
     this.closed = false;
+  }
+
+  // Коннектор на сервере: запрос на WebSocket к <путь-коннектора>/alerts/<токен>.
+  acceptUpgrade(req, socket, head, path) {
+    if (!this.server?.accept) throw new Error('alerts: acceptUpgrade needs publicUrl');
+    return this.server.accept(req, socket, head, path);
   }
 
   // ---------- разбор условий ----------

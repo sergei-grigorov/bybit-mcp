@@ -1,6 +1,6 @@
-// Минимальный MCP-сервер (Model Context Protocol) поверх stdio: JSON-RPC 2.0,
-// одно сообщение на строку. Поддерживается то, что нужно коннектору с
-// инструментами: список и вызов инструментов, отмена запросов.
+// Минимальный MCP-сервер (Model Context Protocol): JSON-RPC 2.0 поверх stdio (одно
+// сообщение на строку) или HTTP (remote/transport.js). Поддерживается то, что нужно
+// коннектору с инструментами: список и вызов инструментов, отмена запросов.
 //
 // Сервер понимает обе эпохи протокола:
 //   • современную (2026-07-28): рукопожатия нет, каждый запрос несёт версию протокола
@@ -23,11 +23,11 @@ export const META = {
   subscriptionId: 'io.modelcontextprotocol/subscriptionId',
 };
 
-const PARSE_ERROR = -32700;
-const INVALID_REQUEST = -32600;
-const METHOD_NOT_FOUND = -32601;
-const INVALID_PARAMS = -32602;
-const INTERNAL_ERROR = -32603;
+export const PARSE_ERROR = -32700;
+export const INVALID_REQUEST = -32600;
+export const METHOD_NOT_FOUND = -32601;
+export const INVALID_PARAMS = -32602;
+export const INTERNAL_ERROR = -32603;
 export const UNSUPPORTED_PROTOCOL_VERSION = -32022;
 const NO_RESPONSE = Symbol('no-response');
 
@@ -36,11 +36,14 @@ const NO_RESPONSE = Symbol('no-response');
 // стоит, а устаревший список после смены настроек сбил бы модель с толку.
 const LIST_TTL_MS = 0;
 
-class RpcError extends Error {
-  constructor(code, message, data) {
+// httpStatus — статус ответа HTTP для ошибок, которые по спецификации 2026-07-28
+// отдаются не со статусом 200 (неполный или неподдерживаемый конверт запроса).
+export class RpcError extends Error {
+  constructor(code, message, data, httpStatus) {
     super(message);
     this.code = code;
     this.data = data;
+    this.httpStatus = httpStatus;
   }
 }
 
@@ -164,18 +167,29 @@ function checkEnvelope(params) {
   const meta = isPlainObject(params?._meta) ? params._meta : {};
   const requested = meta[META.protocolVersion];
   if (typeof requested !== 'string' || !requested) {
-    throw new RpcError(INVALID_PARAMS, `Missing required _meta field ${META.protocolVersion}`);
+    throw new RpcError(INVALID_PARAMS, `Missing required _meta field ${META.protocolVersion}`, undefined, 400);
   }
   if (!MODERN_PROTOCOL_VERSIONS.includes(requested)) {
-    throw new RpcError(UNSUPPORTED_PROTOCOL_VERSION, 'Unsupported protocol version', {
-      supported: [...MODERN_PROTOCOL_VERSIONS, ...LEGACY_PROTOCOL_VERSIONS],
-      requested,
-    });
+    throw new RpcError(
+      UNSUPPORTED_PROTOCOL_VERSION,
+      'Unsupported protocol version',
+      // Те же версии, что в server/discover; прежние выбираются через initialize.
+      { supported: MODERN_PROTOCOL_VERSIONS, requested },
+      400,
+    );
   }
   if (!isPlainObject(meta[META.clientCapabilities])) {
-    throw new RpcError(INVALID_PARAMS, `Missing required _meta field ${META.clientCapabilities}`);
+    throw new RpcError(INVALID_PARAMS, `Missing required _meta field ${META.clientCapabilities}`, undefined, 400);
   }
   return meta;
+}
+
+// Запросы разных клиентов не должны мешать друг другу, даже если их id совпали
+// (по HTTP несколько разговоров присылают свои id независимо). ctx.scope отделяет
+// один канал (stdio — один на процесс, HTTP — один на запрос), ctx.group — клиента,
+// чьё уведомление notifications/cancelled может отменить запрос по id.
+function requestKey(ctx, id) {
+  return `${ctx?.scope ?? ''}\u0000${JSON.stringify(id)}`;
 }
 
 function clientName(info) {
@@ -192,11 +206,12 @@ export class McpServer {
     this.tools = new Map(tools.map((t) => [t.name, t]));
     this.unavailable = unavailable;
     this.logger = logger;
+    // ключ requestKey → { controller, id, group } и { resolve, id, group }
     this.inflight = new Map();
     this.subscriptions = new Map();
     this.seenModernClients = new Set();
-    // Отправка сообщений вне ответа на запрос (подтверждение подписки); start()
-    // подключает её к stdout.
+    // Отправка сообщений вне ответа на запрос (подтверждение подписки) для вызовов без
+    // ctx.emit; start() подключает её к stdout.
     this.emit = () => {};
   }
 
@@ -232,9 +247,11 @@ export class McpServer {
       this.seenModernClients.add(client);
       this.logger.info(`server/discover: ${client}, protocol ${meta[META.protocolVersion]}`);
     }
+    // Списки промптов и ресурсов сервер отдаёт (пустыми), поэтому в современной эпохе
+    // объявляет и их: клиент вправе вызывать только объявленное.
     return {
       supportedVersions: MODERN_PROTOCOL_VERSIONS,
-      capabilities: this.capabilities,
+      capabilities: { ...this.capabilities, prompts: { listChanged: false }, resources: { listChanged: false } },
       instructions: this.instructions,
     };
   }
@@ -251,39 +268,62 @@ export class McpServer {
     return out;
   }
 
-  cancel(requestId) {
-    const controller = this.inflight.get(requestId);
-    if (controller) controller.abort(new Error('Cancelled by client'));
-    const subscription = this.subscriptions.get(requestId);
-    if (subscription) {
-      this.subscriptions.delete(requestId);
-      subscription(NO_RESPONSE);
+  // Отмена запроса. Точное совпадение канала (ctx.scope) — отмена в своём канале, например
+  // обрыв HTTP-ответа; иначе запрос ищется среди запросов того же клиента (ctx.group) и
+  // отменяется, только если найден ровно один.
+  cancel(requestId, ctx = {}) {
+    const key = requestKey(ctx, requestId);
+    let keys = this.inflight.has(key) || this.subscriptions.has(key) ? [key] : [];
+    if (!keys.length && ctx.group !== undefined) {
+      const same = (e) => e.group === ctx.group && JSON.stringify(e.id) === JSON.stringify(requestId);
+      keys = [...this.inflight].filter(([, e]) => same(e)).map(([k]) => k);
+      keys.push(...[...this.subscriptions].filter(([, e]) => same(e)).map(([k]) => k));
+      if (keys.length > 1) {
+        this.logger.warn(`notifications/cancelled for id ${JSON.stringify(requestId)} ignored: several requests match`);
+        return;
+      }
+    }
+    for (const k of keys) {
+      this.inflight.get(k)?.controller.abort(new Error('Cancelled by client'));
+      const subscription = this.subscriptions.get(k);
+      if (subscription) {
+        this.subscriptions.delete(k);
+        subscription.resolve(NO_RESPONSE);
+      }
     }
   }
 
   // subscriptions/listen. Набор инструментов не меняется, пока работает процесс, поэтому
   // уведомлений не будет: подтверждаем подписку с пустым набором и держим запрос
   // открытым до отмены клиентом или завершения сервера.
-  listen(id) {
-    this.emit({
+  listen(id, ctx = {}) {
+    (ctx.emit ?? this.emit)({
       jsonrpc: '2.0',
       method: 'notifications/subscriptions/acknowledged',
       params: { _meta: { [META.subscriptionId]: id }, notifications: {} },
     });
-    return new Promise((resolve) => this.subscriptions.set(id, resolve));
+    return new Promise((resolve) => this.subscriptions.set(requestKey(ctx, id), { resolve, id, group: ctx.group }));
   }
 
   // Сервер завершается: подписки закрываются штатно — ответом на исходный запрос.
   // Возвращает их id, чтобы после ответов послать notifications/cancelled (так на stdio
   // сервер сообщает, что поток подписки закрыт).
   closeSubscriptions() {
-    const ids = [...this.subscriptions.keys()];
-    for (const [id, resolve] of this.subscriptions) resolve({ _meta: { [META.subscriptionId]: id } });
+    const ids = [];
+    for (const { resolve, id } of this.subscriptions.values()) {
+      ids.push(id);
+      resolve({ _meta: { [META.subscriptionId]: id } });
+    }
     this.subscriptions.clear();
     return ids;
   }
 
-  async callTool(id, params) {
+  busy(ctx, id) {
+    const key = requestKey(ctx, id);
+    return this.inflight.has(key) || this.subscriptions.has(key);
+  }
+
+  async callTool(id, params, ctx = {}) {
     const name = params?.name;
     const tool = this.tools.get(name);
     if (!tool) {
@@ -304,7 +344,8 @@ export class McpServer {
       };
     }
     const controller = new AbortController();
-    this.inflight.set(id, controller);
+    const key = requestKey(ctx, id);
+    this.inflight.set(key, { controller, id, group: ctx.group });
     try {
       const out = await tool.handler(args, { signal: controller.signal });
       // Отменённый запрос ответа не получает, даже если обработчик успел закончить.
@@ -320,12 +361,13 @@ export class McpServer {
         isError: true,
       };
     } finally {
-      this.inflight.delete(id);
+      this.inflight.delete(key);
     }
   }
 
   // Один разобранный объект JSON-RPC → ответ или null (уведомления ответа не ждут).
-  async handle(message) {
+  // ctx — канал запроса (см. requestKey) и ctx.emit для сообщений вне ответа.
+  async handle(message, ctx = {}) {
     const isObject = isPlainObject(message);
     if (isObject && message.jsonrpc === '2.0' && message.method === undefined && ('result' in message || 'error' in message)) {
       return null; // ответ на наш запрос — мы запросов не шлём
@@ -337,7 +379,7 @@ export class McpServer {
     const isNotification = id === undefined;
     if (isNotification) {
       // Запросы без id — уведомления: ответа на них не будет, поэтому и не выполняем.
-      if (method === 'notifications/cancelled') this.cancel(params?.requestId);
+      if (method === 'notifications/cancelled') this.cancel(params?.requestId, ctx);
       return null;
     }
     const era = requestEra(method, params);
@@ -356,15 +398,16 @@ export class McpServer {
           break;
         case 'subscriptions/listen':
           if (era !== 'modern') throw new RpcError(METHOD_NOT_FOUND, `Method not found: ${method}`);
-          if (this.inflight.has(id) || this.subscriptions.has(id)) {
+          if (this.busy(ctx, id)) {
             this.logger.warn(`subscriptions/listen with id ${JSON.stringify(id)} ignored: a request with this id is in progress`);
             return null;
           }
-          result = await this.listen(id);
+          result = await this.listen(id, ctx);
           break;
-        // В современной эпохе этих методов нет, но ответить на них безвредно.
+        // В современной эпохе этих методов нет (спецификация требует -32601).
         case 'ping':
         case 'logging/setLevel':
+          if (era === 'modern') throw new RpcError(METHOD_NOT_FOUND, `Method not found: ${method}`);
           result = {};
           break;
         case 'tools/list':
@@ -373,11 +416,11 @@ export class McpServer {
           break;
         case 'tools/call':
           // Ответ с тем же id клиент мог бы принять за ответ на первый вызов.
-          if (this.inflight.has(id) || this.subscriptions.has(id)) {
+          if (this.busy(ctx, id)) {
             this.logger.warn(`tools/call with id ${JSON.stringify(id)} ignored: a call with this id is in progress`);
             return null;
           }
-          result = await this.callTool(id, params);
+          result = await this.callTool(id, params, ctx);
           break;
         case 'resources/list':
           result = { resources: [] };
@@ -397,7 +440,12 @@ export class McpServer {
       if (result === NO_RESPONSE) return null;
       return ok(id, era === 'modern' ? this.modernResult(result, cacheable) : result);
     } catch (err) {
-      if (err instanceof RpcError) return fail(id, err.code, err.message, err.data);
+      if (err instanceof RpcError) {
+        const reply = fail(id, err.code, err.message, err.data);
+        // Статус HTTP для транспорта; в JSON не попадает.
+        if (err.httpStatus) Object.defineProperty(reply, 'httpStatus', { value: err.httpStatus });
+        return reply;
+      }
       this.logger.error(`${method} failed: ${err?.stack ?? err}`);
       return fail(id, INTERNAL_ERROR, err?.message ?? String(err));
     }
@@ -437,7 +485,7 @@ export class McpServer {
     });
     rl.on('close', async () => {
       const timer = setTimeout(() => {
-        for (const controller of this.inflight.values()) controller.abort(new Error('Client disconnected'));
+        for (const { controller } of this.inflight.values()) controller.abort(new Error('Client disconnected'));
       }, closeGraceMs);
       const closed = this.closeSubscriptions();
       await Promise.allSettled([...pending]);
